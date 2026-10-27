@@ -24,10 +24,17 @@ const fetchNews = async () => {
   }
 
   try {
-    const response = await fetch(NEWS_API_URL);
+    // `cf` (Cloudflare) cachea la respuesta en el borde 30 min: NewsAPI gratis
+    // limita a ~100 peticiones/día y antes se llamaba en cada visita. Los
+    // errores no se cachean. Workers no envía User-Agent por defecto.
+    const response = await fetch(NEWS_API_URL, {
+      headers: { "User-Agent": "gentecomunicaciones.cl", Accept: "application/json" },
+      cf: { cacheTtl: 1800, cacheEverything: true },
+    } as RequestInit);
 
     if (!response.ok) {
-      throw new Error("Error fetching news");
+      const detail = (await response.text()).slice(0, 200);
+      throw new Error(`NewsAPI respondió ${response.status}: ${detail}`);
     }
 
     const data = await response.json();
