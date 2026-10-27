@@ -25,12 +25,15 @@ async function fetchWeatherData(comunaId) {
   }
 
   try {
+    // Cache en el borde de Cloudflare por 10 min (antes: 10 llamadas por visita).
     const response = await fetch(
-      `https://api.openweathermap.org/data/2.5/weather?id=${comunaId}&appid=${weatherApiKey}&units=metric&lang=es`
+      `https://api.openweathermap.org/data/2.5/weather?id=${comunaId}&appid=${weatherApiKey}&units=metric&lang=es`,
+      { cf: { cacheTtl: 600, cacheEverything: true } } as RequestInit
     );
 
     if (!response.ok) {
-      throw new Error("Error fetching weather data");
+      const detail = (await response.text()).slice(0, 200);
+      throw new Error(`OpenWeather respondió ${response.status}: ${detail}`);
     }
 
     const data = await response.json();
