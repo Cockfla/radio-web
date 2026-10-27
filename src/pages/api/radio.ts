@@ -1,85 +1,90 @@
-import { Buffer } from "node:buffer";
-import { connect, type Socket } from "node:net";
 import type { APIRoute } from "astro";
 
 export const prerender = false;
 
+// El origen es Shoutcast v1: responde "ICY 200 OK" (no es HTTP válido) y Safari
+// iOS no lo reproduce directo. Este endpoint abre el socket TCP a mano, descarta
+// la cabecera ICY y reexpone el audio como una respuesta HTTP normal.
+//
+// Corre en Cloudflare Workers (`cloudflare:sockets`). No existe en `astro dev`
+// (Node): para probarlo localmente usar `pnpm cf:preview`.
 const STREAM_HOST = "15.235.64.49";
 const STREAM_PORT = 8366;
 const STREAM_PATH = "/;";
+const CONNECT_TIMEOUT_MS = 15000;
+const MAX_HEADER_BYTES = 16 * 1024;
 
-function createRadioStream() {
-  let socket: Socket | undefined;
-  let headerBuffer = Buffer.alloc(0);
-  let headersParsed = false;
+const UPSTREAM_REQUEST = [
+  `GET ${STREAM_PATH} HTTP/1.0`,
+  `Host: ${STREAM_HOST}`,
+  "User-Agent: GenteComunicaciones/1.0",
+  "Accept: audio/aac,audio/aacp,audio/*;q=0.9,*/*;q=0.8",
+  "Icy-MetaData: 0",
+  "Connection: close",
+  "",
+  "",
+].join("\r\n");
 
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      const radioSocket = connect({ host: STREAM_HOST, port: STREAM_PORT }, () => {
-        radioSocket.write(
-          [
-            `GET ${STREAM_PATH} HTTP/1.0`,
-            `Host: ${STREAM_HOST}`,
-            "User-Agent: GenteComunicaciones/1.0",
-            "Accept: audio/aac,audio/aacp,audio/*;q=0.9,*/*;q=0.8",
-            "Icy-MetaData: 0",
-            "Connection: close",
-            "",
-            "",
-          ].join("\r\n")
-        );
-      });
-      socket = radioSocket;
+const unavailable = () => new Response("Señal no disponible", { status: 502 });
 
-      radioSocket.setTimeout(15000, () => {
-        controller.error(new Error("Radio stream connection timeout"));
-        radioSocket.destroy();
-      });
+export const GET: APIRoute = async ({ locals }) => {
+  let sockets: typeof import("cloudflare:sockets");
+  try {
+    sockets = await import("cloudflare:sockets");
+  } catch {
+    return new Response("Solo disponible en el runtime de Cloudflare", { status: 501 });
+  }
 
-      radioSocket.on("data", (chunk) => {
-        if (headersParsed) {
-          controller.enqueue(chunk);
-          return;
-        }
+  const socket = sockets.connect({ hostname: STREAM_HOST, port: STREAM_PORT });
 
-        headerBuffer = Buffer.concat([headerBuffer, chunk]);
-        const headerEnd = headerBuffer.indexOf("\r\n\r\n");
+  try {
+    await Promise.race([
+      socket.opened,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("timeout conectando con la radio")), CONNECT_TIMEOUT_MS)
+      ),
+    ]);
 
-        if (headerEnd === -1) {
-          return;
-        }
+    const writer = socket.writable.getWriter();
+    await writer.write(new TextEncoder().encode(UPSTREAM_REQUEST));
+    // No cerrar el writable: el origen cortaría el stream.
+    writer.releaseLock();
 
-        headersParsed = true;
-        const firstLine = headerBuffer.subarray(0, headerEnd).toString("utf8").split("\r\n")[0];
+    // Lee solo la cabecera, byte a byte (BYOB), para que el resto del audio no
+    // pase por JS.
+    const reader = socket.readable.getReader({ mode: "byob" });
+    let head = "";
+    while (!head.endsWith("\r\n\r\n")) {
+      const { value, done } = await reader.read(new Uint8Array(1));
+      if (done || !value) throw new Error("conexión cerrada antes de la cabecera");
+      head += String.fromCharCode(value[0]);
+      if (head.length > MAX_HEADER_BYTES) throw new Error("cabecera demasiado larga");
+    }
+    reader.releaseLock();
 
-        if (!firstLine.startsWith("ICY 200") && !firstLine.startsWith("HTTP/1.")) {
-          controller.error(new Error("Unexpected radio stream response"));
-          radioSocket.destroy();
-          return;
-        }
+    const statusLine = head.split("\r\n")[0];
+    if (!/^(ICY|HTTP\/1\.[01]) 200/.test(statusLine)) {
+      throw new Error(`respuesta inesperada de la radio: ${statusLine}`);
+    }
+  } catch (error) {
+    console.error("[api/radio]", error instanceof Error ? error.message : error);
+    socket.close().catch(() => {});
+    return unavailable();
+  }
 
-        const body = headerBuffer.subarray(headerEnd + 4);
-        if (body.length > 0) {
-          controller.enqueue(body);
-        }
-      });
+  // Tubería nativa (sin JS por cada trozo de audio). Un stream ya leído no
+  // puede usarse como cuerpo de Response, por eso se pasa por un identity stream.
+  const { readable, writable } = new (globalThis as any).IdentityTransformStream();
+  const pipe = socket.readable.pipeTo(writable).catch(() => {});
+  const ctx = (locals as { runtime?: { ctx?: { waitUntil(p: Promise<unknown>): void } } }).runtime?.ctx;
+  ctx?.waitUntil(pipe);
 
-      radioSocket.on("end", () => controller.close());
-      radioSocket.on("error", (error) => controller.error(error));
-    },
-    cancel() {
-      socket?.destroy();
-    },
-  });
-}
-
-export const GET: APIRoute = () => {
-  return new Response(createRadioStream(), {
+  return new Response(readable, {
     headers: {
       "Content-Type": "audio/aac",
       "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-      "Pragma": "no-cache",
-      "Expires": "0",
+      Pragma: "no-cache",
+      Expires: "0",
       "Accept-Ranges": "none",
       "X-Content-Type-Options": "nosniff",
     },

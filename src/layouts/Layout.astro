@@ -6,7 +6,6 @@ interface Props {
   title: string;
 }
 import Header from "../components/Header.astro";
-import SpeedInsights from "@vercel/speed-insights/astro";
 
 const { title } = Astro.props;
 ---
@@ -60,7 +59,6 @@ const { title } = Astro.props;
     <div id="page-transition-loader" data-astro-transition-persist="page-loader"></div>
     <Header />
     <slot />
-    <SpeedInsights />
     <script is:inline>
       const root = document.documentElement;
       const startNavigation = () => root.classList.add("is-navigating");
