@@ -2,6 +2,7 @@
 import Image from "astro/components/Image.astro";
 import Badge from "./ui/Badge.astro";
 import Card from "./ui/Card.astro";
+import { OPENWEATHER_API_KEY } from "astro:env/server";
 
 const comunas = [
   { name: "Rengo", id: 3873441 },
@@ -16,7 +17,7 @@ const comunas = [
   { name: "Rancagua", id: 3873775 },
 ];
 
-const weatherApiKey = import.meta.env.OPENWEATHER_API_KEY;
+const weatherApiKey = OPENWEATHER_API_KEY;
 
 async function fetchWeatherData(comunaId) {
   if (!weatherApiKey) {
