@@ -76,7 +76,9 @@ export const GET: APIRoute = async ({ locals }) => {
   // puede usarse como cuerpo de Response, por eso se pasa por un identity stream.
   const { readable, writable } = new (globalThis as any).IdentityTransformStream();
   const pipe = socket.readable.pipeTo(writable).catch(() => {});
-  const ctx = (locals as { runtime?: { ctx?: { waitUntil(p: Promise<unknown>): void } } }).runtime?.ctx;
+  // @astrojs/cloudflare 13+ expone el ExecutionContext en `locals.cfContext`
+  // (antes `locals.runtime.ctx`).
+  const ctx = (locals as { cfContext?: { waitUntil(p: Promise<unknown>): void } }).cfContext;
   ctx?.waitUntil(pipe);
 
   return new Response(readable, {
