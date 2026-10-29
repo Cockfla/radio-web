@@ -1,11 +1,9 @@
 import { defineConfig, envField } from "astro/config";
 
-import tailwind from "@astrojs/tailwind";
 import cloudflare from "@astrojs/cloudflare";
 
 // https://astro.build/config
 export default defineConfig({
-  integrations: [tailwind({ applyBaseStyles: false })],
   output: "server",
   adapter: cloudflare({
     // Las imágenes de public/ y las de noticias (remotas) se sirven tal cual;
