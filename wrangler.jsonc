@@ -1,13 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "radio-web",
-  "main": "dist/_worker.js/index.js",
+  "main": "@astrojs/cloudflare/entrypoints/server",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
-  "assets": {
-    "binding": "ASSETS",
-    "directory": "./dist"
-  },
   "observability": {
     "enabled": true
   }

@@ -4,55 +4,102 @@ import "../styles/global.css";
 import { ClientRouter } from "astro:transitions";
 interface Props {
   title: string;
+  description?: string;
+  image?: string;
+  noindex?: boolean;
 }
 import Header from "../components/Header.astro";
 
-const { title } = Astro.props;
+const SITE = "https://www.gentecomunicaciones.cl";
+const DEFAULT_DESCRIPTION =
+  "Sitio web Oficial de Gente Comunicaciones, un medio de comunicación de la Región de O'Higgins, Chile. Conectando a la comunidad de la región con música, noticias y entretenimiento.";
+
+const { title, description = DEFAULT_DESCRIPTION, image = "/layer-gente.png", noindex = false } = Astro.props;
+
+// URL canónica sin barra final ni parámetros (evita contenido duplicado).
+const pathname = Astro.url.pathname.replace(/\/+$/, "") || "/";
+const canonical = new URL(pathname, SITE).href;
+const imageUrl = new URL(image, SITE).href;
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${SITE}/#organization`,
+      name: "Gente Comunicaciones",
+      url: SITE,
+      logo: `${SITE}/logo.png`,
+      email: "contacto@gentecomunicaciones.cl",
+      telephone: "+56988694401",
+      foundingDate: "2005",
+      address: {
+        "@type": "PostalAddress",
+        streetAddress: "José Bisquertt 426, Oficina 2",
+        addressLocality: "Rengo",
+        addressRegion: "Región de O'Higgins",
+        addressCountry: "CL",
+      },
+      areaServed: "Región de O'Higgins, Chile",
+      sameAs: [
+        "https://facebook.com/gentecomunicaciones",
+        "https://instagram.com/gentecomunicaciones",
+      ],
+    },
+    {
+      "@type": "RadioStation",
+      "@id": `${SITE}/#radio`,
+      name: "Gente Comunicaciones",
+      url: SITE,
+      image: imageUrl,
+      description: DEFAULT_DESCRIPTION,
+      broadcastFrequency: "94.5 FM",
+      inLanguage: "es-CL",
+      areaServed: "Región de O'Higgins, Chile",
+      parentOrganization: { "@id": `${SITE}/#organization` },
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${SITE}/#website`,
+      url: SITE,
+      name: "Gente Comunicaciones",
+      inLanguage: "es-CL",
+      publisher: { "@id": `${SITE}/#organization` },
+    },
+  ],
+};
 ---
 
 <!doctype html>
 <html lang="es" class="dark">
   <head>
     <meta charset="UTF-8" />
+    <meta name="description" content={description} />
     <meta
-      name="description"
-      content="Sitio web Oficial de Gente Comunicaciones, un medio de comunicación de la Región de O'Higgins, Chile. Conectando a la comunidad de la región con música, noticias y entretenimiento."
+      name="robots"
+      content={noindex ? "noindex, follow" : "index, follow, max-image-preview:large"}
     />
+    <link rel="canonical" href={canonical} />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="apple-touch-icon" href="/logo.png" />
+    <meta name="theme-color" content="#050813" />
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
-    <meta property="og:url" content="https://www.gentecomunicaciones.cl" />
+    <meta property="og:url" content={canonical} />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Gente Comunicaciones" />
     <meta property="og:locale" content="es_CL" />
-    <meta
-      property="og:title"
-      content="Gente Comunicaciones, donde todas las voces tienen cabida."
-    />
-    <meta
-      property="og:description"
-      content="Gente Comunicaciones un medio de la región de O'Higgins dedicado a informar, entretener y animar a la comunidad con su programación dedicada para todos."
-    />
-    <meta
-      property="og:image"
-      content="https://www.gentecomunicaciones.cl/layer-gente.png"
-    />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={imageUrl} />
     <meta name="twitter:card" content="summary_large_image" />
     <meta property="twitter:domain" content="gentecomunicaciones.cl" />
-    <meta property="twitter:url" content="https://www.gentecomunicaciones.cl" />
-    <meta
-      name="twitter:title"
-      content="Gente Comunicaciones, donde todas las voces tienen cabida."
-    />
-    <meta
-      name="twitter:description"
-      content="Gente Comunicaciones un medio de la región de O'Higgins dedicado a informar, entretener y animar a la comunidad con su programación dedicada para todos."
-    />
-    <meta
-      name="twitter:image"
-      content="https://www.gentecomunicaciones.cl/layer-gente.png"
-    />
+    <meta property="twitter:url" content={canonical} />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={imageUrl} />
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
     <ClientRouter fallback="animate" />
   </head>
   <body>
